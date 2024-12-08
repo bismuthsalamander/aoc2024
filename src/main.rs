@@ -1,8 +1,12 @@
 
-use std::{collections::HashMap, fs::read_to_string};
+use std::{collections::{HashMap, HashSet}, fs::read_to_string};
 
 fn load_file_flat(filename: &str) -> String {
     read_to_string(filename).unwrap()
+}
+
+fn load_file_lines(filename: &str) -> Vec::<String> {
+    read_to_string(filename).unwrap().lines().map(|s| String::from(s)).collect()
 }
 
 fn load_file(filename: &str) -> [Vec<i64>; 2] {
@@ -41,35 +45,62 @@ pub fn day1() {
     println!("Similarity: {}", similarity);
 }
 
-struct Grid {
-    v: Vec::<i64>,
+struct CharGrid {
+    v: Vec::<char>,
     rows: usize,
     cols: usize
 }
 
-impl Grid {
-    fn get(&self, y: usize, c: usize) -> i64 {
-        self.v[y*self.cols + c]
+impl CharGrid {
+    fn valid(&self, x: i64, y: i64) -> bool {
+        x < self.cols as i64 && y < self.rows as i64 && x >= 0 && y >= 0
+    }
+    fn find(&self, c: char) -> (usize, usize) {
+        for x in 0..self.cols {
+            for y in 0..self.rows {
+                if self.get(x as i64, y as i64) == c {
+                    return (x, y);
+                }
+            }
+        }
+        panic!("Couldn't find {}", c);
+    }
+    fn get(&self, c: i64, y: i64) -> char {
+        self.v[(y as usize*self.cols) + c as usize]
+    }
+    fn set(&mut self, x: i64, y: i64, c: char) {
+        self.v[(y as usize*self.cols) + x as usize] = c;
+    }
+    fn check_match(&self, probe: &String, x: i64, y: i64, dx: i64, dy: i64) -> bool {
+        for (offset, ch) in probe.chars().enumerate() {
+            let oi64 = offset as i64;
+            let x = x + (dx * oi64);
+            let y = y + (dy * oi64);
+            if !self.valid(x, y) {
+                return false;
+            }
+            if self.get(x, y) != ch {
+                return false;
+            }
+        }
+        true
     }
 }
 
-fn load_grid(filename: &str) -> Grid {
-    let mut v: Vec::<i64> = Vec::new();
+fn load_grid(filename: &str) -> CharGrid {
+    let mut v: Vec::<char> = Vec::new();
     let mut rows = 0;
     let mut cols = 0;
     for line in read_to_string(filename).unwrap().lines() {
-        for num in line.split(" ") {
-            if num.len() == 0 {
-                continue;
-            }
+        for char in line.chars() {
             if rows == 0 {
                 cols += 1;
             }
-            v.push(String::from(num).parse().unwrap());
+            v.push(char);
         }
         rows += 1;
     }
-    Grid {
+    CharGrid {
         v,
         rows,
         cols
@@ -184,6 +215,11 @@ fn main() {
     day1();
     day2();
     day3();
+    day4();
+    day5();
+    // day6();
+    // day7();
+    day8();
 }
 
 fn day3_try_probe(s: String) -> Option<i32> {
@@ -245,4 +281,318 @@ fn day3() {
         }
     }
     println!("Sum with do/don't: {}", out);
+}
+
+fn day4() {
+    println!("========Day 4========");
+    let g = load_grid("day4.txt");
+    let probe = String::from("XMAS");
+    let mut ct = 0;
+    for y in 0..g.rows {
+        for x in 0..g.cols {
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    if g.check_match(&probe, x as i64, y as i64, dx, dy) {
+                        ct += 1;
+                    }
+                }
+            }
+        }
+    }
+    println!("XMAS count: {}", ct);
+
+    let mut ct = 0;
+    let probe = String::from("MAS");
+    for y in 1i64..(g.rows - 1) as i64 {
+        for x in 1i64..(g.cols - 1) as i64 {
+            let mut found_probes = 0;
+            for (dx, dy) in [(1, 1i64), (-1i64, 1)] {
+                if g.check_match(&probe, x-dx, y-dy, dx, dy) {
+                    found_probes += 1;
+                } else if g.check_match(&probe, x+dx, y+dy, -dx, -dy) {
+                    found_probes += 1;
+                }
+            }
+            if found_probes >= 2 {
+                ct += 1;
+            }
+        }
+    }
+    println!("X-MAS count: {}", ct);
+}
+
+fn day5() {
+    println!("========Day 5========");
+    let mut rules = HashSet::<(usize, usize)>::new();
+    let lines = load_file_lines("day5.txt");
+    let mut sum = 0;
+    let mut sum_wrong = 0;
+    let mut rules_done = false;
+    for line in lines.iter() {
+        if !rules_done {
+            if line.len() == 0 {
+                rules_done = true;
+                continue;
+            }
+            let idx = line.find('|').unwrap();
+            let first: usize = line[0..idx].parse().unwrap();
+            let second: usize = line[idx+1..line.len()].parse().unwrap();
+            rules.insert((first, second));
+        } else {
+            let mut pages: Vec<usize> = line.split(',').map(|s| s.parse::<usize>().unwrap()).collect();
+            let mut ok = true;
+            'outer: for second in 1..pages.len() {
+                for first in 0..second {
+                    if rules.contains(&(pages[second], pages[first])) {
+                        ok = false;
+                        break 'outer;
+                    }
+                }
+            }
+            if ok {
+                sum += pages[(pages.len() - 1) / 2];
+            } else {
+                // Bubble sort - I'm not sure I could prove why we can get away with only examining
+                // immediately adjacent elements, but it seems like a consequence of the ordering
+                // being unique
+                let mut changed = true;
+                while changed {
+                    changed = false;
+                    for idx in 1..pages.len() {
+                        if rules.contains(&(pages[idx], pages[idx-1])) {
+                            pages.swap(idx, idx-1);
+                            changed = true;
+                        }
+                    }
+                }
+                sum_wrong += pages[(pages.len() - 1) / 2];
+            }
+        }
+    }
+    println!("Sum of correctly ordered pages: {}", sum);
+    println!("Sum of incorrectly ordered pages: {}", sum_wrong);
+}
+
+fn day6_run(g: &CharGrid) -> (usize, bool) {
+    let mut visited = HashSet::<(i64, i64)>::new();
+    let mut prev_states = HashSet::<(i64, i64, i64, i64)>::new();
+    let (x , y) = g.find('^');
+    let mut x = x as i64;
+    let mut y = y as i64;
+    let (mut dx, mut dy) = (0i64, -1i64);
+    visited.insert((x, y));
+    loop {
+        if !g.valid(x + dx, y + dy) {
+            return (visited.len(), false);
+        }
+        while g.get(x + dx, y + dy) == '#' {
+            if prev_states.contains(&(x, y, dx, dy)) {
+                return (visited.len(), true);
+            }
+            prev_states.insert((x, y, dx, dy));
+            (dx, dy) = match (dx, dy) {
+                (0, 1) => (-1, 0),
+                (-1, 0) => (0, -1),
+                (0, -1) => (1, 0),
+                (1, 0) => (0, 1),
+                _ => panic!("unknown direction")
+            };
+        }
+        x += dx;
+        y += dy;
+        if g.get(x, y) == '#' {
+            println!("x: {}, y: {}", x, y);
+            panic!("whoops - stepped onto an obstacle");
+        }
+        visited.insert((x, y));
+    }
+}
+
+fn day6() {
+    println!("========Day 6========");
+    let mut g = load_grid("day6.txt");
+    let (visited, _luup) = day6_run(&g);
+    println!("Locations: {}", visited);
+    let mut luups = 0;
+    for x in 0..g.cols as i64 {
+        println!("col {} / {}", x, g.cols);
+        for y in 0..g.rows as i64 {
+            if g.get(x, y) != '.' {
+                continue;
+            }
+            g.set(x, y, '#');
+            let (_, luup) = day6_run(&g);
+            if luup {
+                luups += 1;
+            }
+            g.set(x, y, '.');
+        }
+    }
+    println!("Luup locations: {}", luups);
+}
+
+fn day7_combo_update(v: &mut Vec<usize>, max: usize) -> bool {
+    v[0] += 1;
+    let mut idx = 0;
+    while v[idx] >= max {
+        v[idx] = 0;
+        idx += 1;
+        if idx == v.len() {
+            return false;
+        }
+        v[idx] += 1;
+    }
+    true
+}
+
+fn day7() {
+    println!("========Day 7========");
+    let lines = load_file_lines("day7.txt");
+    let mut problems = Vec::<(usize, Vec::<usize>)>::new();
+    for line in lines.iter() {
+        let colon = line.find(':').unwrap();
+        let first: usize = line[0..colon].parse().unwrap();
+        let p = (first, line[colon+2..line.len()].split(' ').map(|s| s.parse::<usize>().unwrap()).collect());
+        problems.push(p);
+    }
+    let mut sum = 0;
+    for p in problems.iter() {
+        let mut ok = false;
+        let max_mask = 2usize.pow(p.1.len() as u32);
+        for mask in 0..max_mask {
+            let mut val = p.1[0];
+            for i in 0..(p.1.len() - 1) {
+                if (mask & (1 << i)) > 0 {
+                    val *= p.1[i+1];
+                } else {
+                    val += p.1[i+1];
+                }
+            }
+            if val == p.0 {
+                ok = true;
+                break;
+            }
+        }
+        if ok {
+            sum += p.0;
+        }
+    }
+    println!("Sum: {}", sum);
+    let mut sum = 0;
+    let mut z = 0;
+    for p in problems.iter() {
+        println!("{} {}", z, p.1.len());
+        z += 1;
+        let mut opers: Vec<usize> = (0..p.1.len()).map(|_idx| 0).collect();
+        let mut ok = false;
+        loop {
+            let mut val = p.1[0];
+            for i in 0..(p.1.len() - 1) {
+                if opers[i] == 0 {
+                    val += p.1[i+1];
+                } else if opers[i] == 1 {
+                    val *= p.1[i+1];
+                } else if opers[i] == 2 {
+                    let mut tmp = p.1[i+1];
+                    while tmp > 0 {
+                        val *= 10;
+                        tmp /= 10;
+                    }
+                    val += p.1[i+1];
+                } else {
+                    panic!("whoops - val is {}", opers[i]);
+                }
+                if val > p.0 {
+                    break;
+                }
+            }
+            if val == p.0 {
+                ok = true;
+                break;
+            }
+            if !day7_combo_update(&mut opers, 3) {
+                break;
+            }
+        }
+        if ok {
+            sum += p.0;
+        }
+    }
+    println!("Sum: {}", sum);
+}
+
+fn day8() {
+    println!("========Day 8========");
+    let g = load_grid("day8.txt");   
+    let mut antennas = HashMap::<char, Vec<(i64, i64)>>::new();
+    for x in 0..g.cols as i64 {
+        for y in 0..g.rows as i64 {
+            let ch = g.get(x, y);
+            if ch == '.' {
+                continue;
+            }
+            antennas.entry(ch).or_insert(Vec::new()).push((x, y));
+        }
+    }
+
+    let mut locations = HashSet::<(i64, i64)>::new();
+    for (_k, coords) in antennas.iter() {
+        for i in 0..coords.len() {
+            for j in (i+1)..coords.len() {
+                let (xi, yi) = coords[i];
+                let (xj, yj) = coords[j];
+                let dx = xj - xi;
+                let dy = yj - yi;
+                let x0 = xi - dx;
+                let y0 = yi - dy;
+                let x1 = xj + dx;
+                let y1 = yj + dy;
+                if g.valid(x0, y0) {
+                    locations.insert((x0, y0));
+                }
+                if g.valid(x1, y1) {
+                    locations.insert((x1, y1));
+                }
+            }
+        }
+    }
+    println!("Locations: {}", locations.len());
+
+    locations.clear();
+    for (_k, coords) in antennas.iter() {
+        for i in 0..coords.len() {
+            for j in (i+1)..coords.len() {
+                let (xi, yi) = coords[i];
+                let (xj, yj) = coords[j];
+                let dx = xj - xi;
+                let dy = yj - yi;
+                // we would need to divide dx and dy by their GCD, but each of the pairs in the
+                // input data have dx and dy that are relatively prime.
+                let mut x0 = xi;
+                let mut y0 = yi;
+                while g.valid(x0, y0) {
+                    locations.insert((x0, y0));
+                    x0 -= dx;
+                    y0 -= dy;
+                }
+                x0 = xi;
+                y0 = yi;
+                while g.valid(x0, y0) {
+                    locations.insert((x0, y0));
+                    x0 += dx;
+                    y0 += dy;
+                }
+            }
+        }
+    }
+    // for y in 0i64..g.rows as i64 {
+    //     for x in 0i64..g.cols as i64 {
+    //         print!("{}", if locations.contains(&(x, y)) { '#' } else { g.get(x, y) });
+    //     }
+    //     println!("");
+    // }
+    println!("Locations: {}", locations.len());
 }
