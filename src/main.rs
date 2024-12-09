@@ -219,7 +219,8 @@ fn main() {
     day5();
     // day6();
     // day7();
-    day8();
+    // day8();
+    day9();
 }
 
 fn day3_try_probe(s: String) -> Option<i32> {
@@ -595,4 +596,142 @@ fn day8() {
     //     println!("");
     // }
     println!("Locations: {}", locations.len());
+}
+
+fn day9() {
+    println!("========Day 9========");
+    let g = load_grid("day9.txt");
+    let nums: Vec::<usize> = g.v.iter().map(|s| String::from(*s).parse().unwrap()).collect();
+    let size: usize = nums.iter().sum();
+    // None will represent a free block, and Some(n) represents a block for file n.
+    let mut fs = Vec::<Option<usize>>::with_capacity(size);
+    let mut is_file = true;
+    let mut file_id = 0;
+    for num in nums.iter() {
+        for _i in 0..*num {
+            fs.push(if is_file { Some(file_id) } else { None });
+        }
+        if is_file {
+            file_id += 1;
+        }
+        is_file = !is_file;
+    }
+    let mut free_ptr = fs.iter().position(|val| val.is_none()).unwrap();
+    let mut file_ptr = fs.iter().rposition(|val| val.is_some()).unwrap();
+    while file_ptr > free_ptr {
+        fs[free_ptr] = fs[file_ptr];
+        fs[file_ptr] = None;
+        while fs[file_ptr].is_none() {
+            file_ptr -= 1;
+        }
+        while fs[free_ptr].is_some() {
+            free_ptr += 1;
+        }
+    }
+    // for num in fs.iter() {
+    //     if num.is_none() {
+    //         print!(".");
+    //     } else {
+    //         print!("{}", num.unwrap());
+    //     }
+    // }
+    print!("\n");
+    println!("Checksum: {}", day9_checksum(&fs));
+
+    // Part 2 ********************************************
+    // Okay, so I implemented it differently for part 2. I was annoyed that each search for a free
+    // spot for a *single* file would be O(n^2) - I think, at least - in the original
+    // implementation, so I did it this way. Fortunately, we don't have to worry about merging
+    // free chunks since the moves all happen right-to-left.
+    struct FSNode {
+        size: usize,
+        file_id: Option<usize>
+    }
+    impl FSNode {
+        fn is_file(&self) -> bool {
+            self.file_id.is_some()
+        }
+        fn is_free(&self) -> bool {
+            !self.is_file()
+        }
+    }
+    let mut fs = Vec::<FSNode>::with_capacity(nums.len());
+    let mut is_file = true;
+    let mut file_id = 0;
+    for num in nums.iter() {
+        fs.push(FSNode {
+            file_id: if is_file { Some(file_id) } else { None },
+            size: *num
+        });
+        if is_file {
+            file_id += 1;
+        }
+        is_file = !is_file;
+    }
+    
+    let mut first_free_ptr = fs.iter().position(|val| val.is_free()).unwrap();
+    let mut file_ptr = fs.iter().rposition(|val| val.is_file()).unwrap();
+    // We carry over the file_id variable to track the current search target, which prevents us
+    // from mistakenly moving a file a second time. That wasn't a problem in part 1 because the
+    // occupied space is completely contiguous, and we can abort the defrag as soon as the free
+    // and file pointers cross over each other. Here, we may well encounter the same file twice
+    // long before first_free_ptr and file_ptr meet.
+    while first_free_ptr < file_ptr {
+        let mut free_ptr = first_free_ptr;
+        let end = fs[file_ptr].file_id == Some(0);
+        while free_ptr < file_ptr && !(fs[free_ptr].is_free() && fs[free_ptr].size >= fs[file_ptr].size) {
+            free_ptr += 1;
+        }
+        if fs[free_ptr].is_free() && fs[free_ptr].size >= fs[file_ptr].size {
+            let leftover = fs[free_ptr].size - fs[file_ptr].size;
+            fs[free_ptr].size = fs[file_ptr].size;
+            fs[free_ptr].file_id = fs[file_ptr].file_id;
+            fs[file_ptr].file_id = None;
+            if leftover > 0 {
+                fs.insert(free_ptr + 1, FSNode {
+                    size: leftover,
+                    file_id: None
+                });
+                file_ptr += 1;
+            }
+        }
+        if end {
+            break;
+        }
+        file_id -= 1;
+        // find next file
+        while file_ptr > 0 && fs[file_ptr].is_free() || fs[file_ptr].file_id.unwrap() >= file_id {
+            file_ptr -= 1;
+        }
+        // find next free
+        while fs[first_free_ptr].is_file() {
+            first_free_ptr += 1;
+        }
+    }
+    // for node in fs.iter() {
+    //     for _ in 0..node.size {
+    //         if node.is_file() {
+    //             print!("{}", node.file_id.unwrap());
+    //         } else {
+    //             print!(".");
+    //         }
+    //     }
+    // }
+    let mut sum = 0;
+    let mut block_id = 0;
+    for node in fs.iter() {
+        if node.is_free() {
+            block_id += node.size;
+        } else {
+            for _ in 0..node.size {
+                sum += block_id * node.file_id.unwrap();
+                block_id += 1;
+            }
+        }
+    }
+    println!("Checksum: {}", sum);
+}
+
+fn day9_checksum(v: &Vec<Option<usize>>) -> usize {
+    v.iter().enumerate().map(|(idx, x)| x.unwrap_or(0) * idx).sum()
 }
