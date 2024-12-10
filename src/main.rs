@@ -221,6 +221,7 @@ fn main() {
     // day7();
     // day8();
     day9();
+    day10();
 }
 
 fn day3_try_probe(s: String) -> Option<i32> {
@@ -734,4 +735,47 @@ fn day9() {
 
 fn day9_checksum(v: &Vec<Option<usize>>) -> usize {
     v.iter().enumerate().map(|(idx, x)| x.unwrap_or(0) * idx).sum()
+}
+
+fn day10_eval(g: &CharGrid, tx: i64, ty: i64) -> (usize, usize) {
+    let mut dests = HashSet::<(i64, i64)>::new();
+    let mut rating = 0;
+    let mut frontier = Vec::<(i64, i64)>::new();
+    frontier.push((tx, ty));
+    while frontier.len() > 0 {
+        let (x, y) = frontier.remove(0);
+        let ch = g.get(x, y);
+        if ch == '9' {
+            dests.insert((x, y));
+            // Luckily, we know that each visit to a given cell represents a unique path, so we
+            // don't need to deduplicate anything for trailhead ratings.
+            rating += 1;
+        } else {
+            for (dx, dy) in [(0, 1), (0, -1), (1, 0), (-1, 0)] {
+                if g.valid(x+dx, y+dy) && g.get(x+dx, y+dy) == ((ch as u8) + 1) as char {
+                    frontier.push((x+dx, y+dy));
+                }
+            }
+        }
+    }
+    (dests.len(), rating)
+}
+
+fn day10() {
+    println!("========Day 10========");
+    let g = load_grid("day10.txt");
+    let mut score = 0;
+    let mut rating = 0;
+    for y in 0..g.rows as i64 {
+        for x in 0..g.cols as i64 {
+            if g.get(x, y) != '0' {
+                continue;
+            }
+            let (s, r) = day10_eval(&g, x, y);
+            println!("{},{}", s, r);
+            score += s;
+            rating += r;
+        }
+    }
+    println!("Score: {}\nRating: {}", score, rating);
 }
