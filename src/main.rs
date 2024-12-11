@@ -1,5 +1,5 @@
 
-use std::{collections::{HashMap, HashSet}, fs::read_to_string};
+use std::{collections::{HashMap, HashSet}, fs::read_to_string, str::FromStr};
 
 fn load_file_flat(filename: &str) -> String {
     read_to_string(filename).unwrap()
@@ -9,7 +9,20 @@ fn load_file_lines(filename: &str) -> Vec::<String> {
     read_to_string(filename).unwrap().lines().map(|s| String::from(s)).collect()
 }
 
-fn load_file(filename: &str) -> [Vec<i64>; 2] {
+fn load_file_num<T>(filename: &str) -> Vec<T> where T: FromStr, <T as FromStr>::Err: std::fmt::Debug {
+    let mut out = Vec::<T>::new();
+    for line in read_to_string(filename).unwrap().lines() {
+        for num in line.split(" ") {
+            if num.len() == 0 {
+                continue;
+            }
+            out.push(String::from(num).parse().unwrap());
+        }
+    }
+    out
+}
+
+fn load_file_day1(filename: &str) -> [Vec<i64>; 2] {
     let mut out = [Vec::new(), Vec::new()];
     for line in read_to_string(filename).unwrap().lines() {
         let mut idx = 0usize;
@@ -28,7 +41,7 @@ fn load_file(filename: &str) -> [Vec<i64>; 2] {
 
 pub fn day1() {
     println!("========Day 1========");
-    let locations = load_file("day1.txt");
+    let locations = load_file_day1("day1.txt");
     let mut dist = 0;
     for idx in 0..locations[0].len() {
         dist += (locations[0][idx] - locations[1][idx]).abs();
@@ -222,6 +235,7 @@ fn main() {
     // day8();
     day9();
     day10();
+    day11();
 }
 
 fn day3_try_probe(s: String) -> Option<i32> {
@@ -636,7 +650,7 @@ fn day9() {
     //         print!("{}", num.unwrap());
     //     }
     // }
-    print!("\n");
+    // print!("\n");
     println!("Checksum: {}", day9_checksum(&fs));
 
     // Part 2 ********************************************
@@ -772,10 +786,106 @@ fn day10() {
                 continue;
             }
             let (s, r) = day10_eval(&g, x, y);
-            println!("{},{}", s, r);
             score += s;
             rating += r;
         }
     }
     println!("Score: {}\nRating: {}", score, rating);
+}
+
+fn count_digits(mut n: usize) -> usize {
+    let mut out = 0;
+    while n > 0 {
+        out += 1;
+        n /= 10;
+    }
+    out
+}
+
+fn day11_count(n: usize, scratch: &mut Vec<usize>, gen: usize) -> usize {
+    scratch.clear();
+    scratch.push(n);
+    for g in 0..gen {
+        let mut i = 0;
+        while i < scratch.len() {
+            if scratch[i] == 0 {
+                scratch[i] = 1;
+            } else {
+                let d = count_digits(scratch[i]);
+                if d % 2 == 0 {
+                    let split = 10usize.pow((d/2) as u32);
+                    let right = scratch[i] % split;
+                    let left = (scratch[i] - right) / split;
+                    scratch[i] = right;
+                    scratch.insert(i, left);
+                    i += 1;
+                } else {
+                    scratch[i] *= 2024;
+                }
+            }
+            i += 1
+        }
+    }
+    scratch.len()
+}
+
+fn day11_count_pt2(n: usize, gen: usize) -> usize {
+    // Reusing these two hashmaps to save memory churn associated with re-instantiating new maps
+    // on every iteration. We could probably speed this up by memoizing it, but the input data was
+    // pretty small.
+    let mut a = HashMap::<usize, usize>::new();
+    let mut b = HashMap::<usize, usize>::new();
+    a.insert(n, 1);
+    for g in 0..gen {
+        let src: &mut HashMap::<usize, usize>;
+        let dest: &mut HashMap::<usize, usize>;
+        if g % 2 == 0 {
+            src = &mut a;
+            dest = &mut b;
+        } else {
+            src = &mut b;
+            dest = &mut a;
+        }
+        dest.clear();
+        for (num, count) in src.iter() {
+            if *num == 0 {
+                *dest.entry(1).or_insert(0) += *count;
+            } else {
+                let d = count_digits(*num);
+                if d % 2 == 0 {
+                    let split = 10usize.pow((d/2) as u32);
+                    let right = *num % split;
+                    let left = (*num - right) / split;
+                    *dest.entry(right).or_insert(0) += *count;
+                    *dest.entry(left).or_insert(0) += *count;
+                } else {
+                    *dest.entry(*num * 2024).or_insert(0) += *count;
+                }
+            }
+        }
+    }
+    let dest = if gen % 2 == 0 { a } else { b };
+    dest.iter().map(|(_k, v)| v).sum()
+}
+
+fn day11() {
+    println!("========Day 11========");
+    let stones: Vec<usize> = load_file_num("day11.txt");
+    let mut sum = 0;
+    let mut sum2 = 0 ;
+    let mut v = Vec::<usize>::new();
+    for num in stones.iter() {
+        let v1 = day11_count(*num, &mut v, 25);
+        let v2 = day11_count_pt2(*num, 25);
+        if v1 != v2 {
+            panic!("mismatch {} {}", v1, v2);
+        }
+        sum += v1;
+        sum2 += v2;
+    }
+    println!("After 25 gen: {}", sum);
+    println!("After 25 gen (fancy): {}", sum2);
+
+    let sum: usize = stones.iter().map(|num| day11_count_pt2(*num, 75)).sum();
+    println!("After 75 gen: {}", sum);
 }
